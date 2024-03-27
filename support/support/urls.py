@@ -1,38 +1,51 @@
-import random
-import string
-from typing import Callable
+import json
 
 import httpx
+from django.contrib import admin
 from django.http import HttpRequest, JsonResponse
 from django.urls import path
-
-create_random_string: Callable[[int], str] = lambda size: "".join(
-    [random.choice(string.ascii_letters) for _ in range(size)]
-)
+from django.views.decorators.csrf import csrf_exempt
 
 
-def generate_article_idea(request: HttpRequest) -> JsonResponse:
-    content = {
-        "title": create_random_string(size=10),
-        "description": create_random_string(size=20),
-    }
-    return JsonResponse(content)
+@csrf_exempt
+async def currency(request: HttpRequest) -> JsonResponse:
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            currency_from = data.get("from_currency")
+            currency_to = data.get("to_currency")
 
+            url = f"https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency={currency_from}&to_currency={currency_to}&apikey=V2V43QAQ8RILGBOW"
 
-async def get_current_market_state(request: HttpRequest) -> JsonResponse:
-    url = "https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=UAH&to_currency=USD&apikey=V2V43QAQ8RILGBOW"
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url)
+                response.raise_for_status()
+                exchange_data = response.json()
 
-    async with httpx.AsyncClient() as client:
-        response: httpx.Response = await client.get(url)
-    # await asyncio.sleep(5)
-    rate: str = response.json()["Realtime Currency Exchange Rate"][
-        "5. Exchange Rate"
-    ]
+                exchange_rate = exchange_data.get(
+                    "Realtime Currency Exchange Rate", {}
+                ).get("5. Exchange Rate")
+                if exchange_rate:
+                    return JsonResponse({"rate": float(exchange_rate)})
+                else:
+                    return JsonResponse(
+                        {"error": "Exchange rate not found in response"},
+                        status=500,
+                    )
 
-    return JsonResponse({"rate": rate})
+        except json.JSONDecodeError:
+
+            return JsonResponse({"error": "Invalid JSON data"}, status=400)
+        except httpx.RequestError:
+            return JsonResponse(
+                {"error": "Failed to fetch exchange rate"}, status=500
+            )
+
+    else:
+        return JsonResponse({"error": "Method not allowed"}, status=405)
 
 
 urlpatterns = [
-    path(route="generate-article", view=generate_article_idea),
-    path(route="market", view=get_current_market_state),
+    path("admin/", admin.site.urls),
+    path("currency", view=currency),
 ]
