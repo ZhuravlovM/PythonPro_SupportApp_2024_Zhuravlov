@@ -1,62 +1,48 @@
 import json
-import random
 
-from django.http import HttpRequest, JsonResponse
+from django.http import Http404, HttpRequest, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+from rest_framework import serializers
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
 
-from issues.models import Issues
+from issues.models import Issue
 
 
-def get_issues(request: HttpRequest) -> JsonResponse:
-    issue_id = request.GET.get("id")
-    if issue_id is None:
-        return JsonResponse({"error": "No issue ID provided"}, status=400)
+class IssuesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Issue
+        fields = ["id", "title", "status", "junior", "senior"]
 
+
+@api_view(["GET"])
+def get_issues(request: HttpRequest) -> Response:
+    issues = Issue.objects.all()
+    serializer = IssuesSerializer(issues, many=True)
+    return Response(serializer.data)
+
+
+@api_view(["GET"])
+def retrieve_issues(request: HttpRequest, issue_id: int) -> Response:
     try:
-        issue = Issues.objects.get(id=issue_id)
-        result = {
-            "id": issue.id,
-            "title": issue.title,
-            "body": issue.body,
-            "junior_id": issue.junior_id,
-            "senior_id": issue.senior_id,
-        }
-        return JsonResponse(data=result)
-    except Issues.DoesNotExist:
-        return JsonResponse(
-            {"error": f"Issue with ID {issue_id} does not exist"}, status=404
-        )
+        issue = Issue.objects.get(id=issue_id)
+    except Issue.DoesNotExist:
+        raise Http404
+    serializer = IssuesSerializer(issue)
+    return Response(serializer.data)
 
 
+@api_view(["POST"])
 @csrf_exempt
 def post_issues(request: HttpRequest) -> JsonResponse:
-    if request.method == "POST":
-        data = json.loads(request.body)
-        title = data.get("title")
-        body = data.get("body")
+    try:
+        payload = json.loads(request.body)
+    except json.decoder.JSONDecodeError:
+        return JsonResponse({"error": "Request Body is invalid"}, status=400)
 
-        if title is not None and body is not None:
-            issue = Issues.objects.create(
-                title=title,
-                body=body,
-                junior_id=random.randint(1, 5),
-                senior_id=random.randint(1, 5),
-            )
-
-            result = {
-                "id": issue.id,
-                "title": issue.title,
-                "body": issue.body,
-                "junior_id": issue.junior_id,
-                "senior_id": issue.senior_id,
-            }
-
-            return JsonResponse(data=result)
-        else:
-            return JsonResponse(
-                {"error": "Missing 'title' or 'body' in JSON data"}, status=400
-            )
+    serializer = IssuesSerializer(data=payload)
+    if serializer.is_valid():
+        issue = serializer.save()
+        return JsonResponse(data=IssuesSerializer(issue).data, status=201)
     else:
-        return JsonResponse(
-            {"error": "Only POST requests are allowed"}, status=405
-        )
+        return JsonResponse(serializer.errors, status=400)
