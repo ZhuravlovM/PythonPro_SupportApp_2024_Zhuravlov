@@ -11,6 +11,9 @@ isort = "*"
 ruff = "*"
 httpx = "*"
 django-stubs = "*"
+psycopg2 = "*"
+python-dotenv = "*"
+djangorestframework = "*"
 
 [dev-packages]
 
