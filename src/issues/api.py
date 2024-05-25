@@ -91,4 +91,3 @@ class IssuesRetrieveAPI(generics.RetrieveUpdateDestroyAPIView):
 #     except Issue.DoesNotExist:
 #         raise Http404
 #     return Response(data={"result": IssuesSerializer(issues).data})
-
